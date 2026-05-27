@@ -32,4 +32,4 @@ WORKDIR /app/apps/server
 
 EXPOSE 4000
 
-CMD ["../../node_modules/.bin/tsx", "src/index.ts"]
+CMD ["/app/node_modules/.bin/tsx", "src/index.ts"]
