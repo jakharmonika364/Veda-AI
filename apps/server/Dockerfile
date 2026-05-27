@@ -19,17 +19,18 @@ WORKDIR /app
 COPY package.json package-lock.json turbo.json tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/server/package.json ./apps/server/
-RUN npm ci --workspace=@vedaai/server --workspace=@vedaai/shared --include-workspace-root
+RUN npm ci --workspace=@vedaai/server --workspace=@vedaai/shared --include-workspace-root && \
+    npm install -g tsx
 
 # Build shared package (server imports from it)
 COPY packages/shared/ ./packages/shared/
 RUN npm run build --workspace=@vedaai/shared
 
-# Copy server source (no tsc build — tsx runs TS directly)
+# Copy server source (tsx runs TS directly)
 COPY apps/server/ ./apps/server/
 
 WORKDIR /app/apps/server
 
 EXPOSE 4000
 
-CMD ["/app/node_modules/.bin/tsx", "src/index.ts"]
+CMD ["tsx", "src/index.ts"]
