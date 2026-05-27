@@ -1,5 +1,4 @@
 import { Worker, Job } from 'bullmq';
-import fs from 'fs';
 import path from 'path';
 import { getRedisConnection } from '../config/redis';
 import { QUESTION_QUEUE_NAME } from '../queues/questionQueue';
@@ -7,20 +6,18 @@ import { Assignment } from '../models/Assignment';
 import { QuestionPaper } from '../models/QuestionPaper';
 import { generateQuestionPaper, buildPrompt } from '../services/llmService';
 import { emitToAssignment } from '../websocket/wsServer';
-import { env } from '../config/env';
 import type { WsJobStartedData, WsJobProgressData, WsJobCompletedData, WsJobFailedData } from '@vedaai/shared';
 
 export interface QuestionJobData {
   assignmentId: string;
 }
 
-function readImageAsBase64(fileUrl: string): { base64: string; mimeType: string } | null {
+async function fetchImageAsBase64(fileUrl: string): Promise<{ base64: string; mimeType: string } | null> {
   try {
-    // fileUrl is like /uploads/files/filename.jpg — resolve from server root
-    const filePath = path.join(process.cwd(), fileUrl);
-    if (!fs.existsSync(filePath)) return null;
-    const buffer = fs.readFileSync(filePath);
-    const ext = path.extname(fileUrl).toLowerCase();
+    const res = await fetch(fileUrl);
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const ext = path.extname(new URL(fileUrl).pathname).toLowerCase();
     const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
     return { base64: buffer.toString('base64'), mimeType };
   } catch {
@@ -61,17 +58,21 @@ export function startWorker(): Worker {
         textContent = assignment.pastedText;
         console.log(`Using pasted text for assignment ${assignmentId} (${textContent.length} chars)`);
       } else if (assignment.fileUrl) {
-        const ext = path.extname(assignment.fileUrl).toLowerCase();
+        const ext = path.extname(new URL(assignment.fileUrl).pathname).toLowerCase();
         if (ext === '.txt') {
           try {
-            const filePath = path.join(process.cwd(), assignment.fileUrl);
-            textContent = fs.readFileSync(filePath, 'utf-8');
-            console.log(`Text file loaded for assignment ${assignmentId}: ${assignment.fileUrl} (${textContent.length} chars)`);
+            const res = await fetch(assignment.fileUrl);
+            if (res.ok) {
+              textContent = await res.text();
+              console.log(`Text file loaded for assignment ${assignmentId} (${textContent.length} chars)`);
+            } else {
+              console.warn(`Failed to fetch text file for assignment ${assignmentId}`);
+            }
           } catch {
-            console.warn(`Failed to read text file for assignment ${assignmentId}`);
+            console.warn(`Failed to fetch text file for assignment ${assignmentId}`);
           }
         } else {
-          const img = readImageAsBase64(assignment.fileUrl);
+          const img = await fetchImageAsBase64(assignment.fileUrl);
           if (img) {
             imageBase64 = img.base64;
             imageMimeType = img.mimeType;
