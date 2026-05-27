@@ -15,22 +15,21 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 
 WORKDIR /app
 
-# Install dependencies (layered for cache efficiency)
+# Install dependencies
 COPY package.json package-lock.json turbo.json tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/server/package.json ./apps/server/
 RUN npm ci --workspace=@vedaai/server --workspace=@vedaai/shared --include-workspace-root
 
-# Build shared package first (server depends on it)
+# Build shared package (server imports from it)
 COPY packages/shared/ ./packages/shared/
 RUN npm run build --workspace=@vedaai/shared
 
-# Build server
+# Copy server source (no tsc build — tsx runs TS directly)
 COPY apps/server/ ./apps/server/
-RUN npm run build --workspace=@vedaai/server
 
 WORKDIR /app/apps/server
 
 EXPOSE 4000
 
-CMD ["node", "dist/index.js"]
+CMD ["../../node_modules/.bin/tsx", "src/index.ts"]
