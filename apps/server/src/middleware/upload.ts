@@ -1,26 +1,10 @@
-import multer, { StorageEngine } from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { env } from '../config/env';
+import multer from 'multer';
 import { createError } from './errorHandler';
 
-const filesDir = path.join(env.UPLOADS_DIR, 'files');
-if (!fs.existsSync(filesDir)) {
-  fs.mkdirSync(filesDir, { recursive: true });
-}
-
-const storage: StorageEngine = multer.diskStorage({
-  destination: (req, file, cb) => void cb(null, filesDir),
-  filename: (req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
-});
-
 export const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'text/plain'];
     if (allowed.includes(file.mimetype)) {
       cb(null, true);

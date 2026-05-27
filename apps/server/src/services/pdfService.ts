@@ -1,7 +1,5 @@
 import puppeteer from 'puppeteer';
-import path from 'path';
-import fs from 'fs';
-import { env } from '../config/env';
+import { uploadBlob } from './blobService';
 import type { IQuestionPaper } from '../models/QuestionPaper';
 
 function getDifficultyColor(difficulty: string): string {
@@ -104,12 +102,6 @@ function renderPaperHTML(paper: IQuestionPaper): string {
 }
 
 export async function generatePDF(paper: IQuestionPaper, assignmentId: string): Promise<string> {
-  const pdfsDir = path.join(env.UPLOADS_DIR, 'pdfs');
-  if (!fs.existsSync(pdfsDir)) {
-    fs.mkdirSync(pdfsDir, { recursive: true });
-  }
-
-  const outputPath = path.join(pdfsDir, `${assignmentId}.pdf`);
   const html = renderPaperHTML(paper);
 
   const browser = await puppeteer.launch({
@@ -117,18 +109,19 @@ export async function generatePDF(paper: IQuestionPaper, assignmentId: string): 
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
+  let pdfBuffer: Buffer;
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'domcontentloaded' });
-    await page.pdf({
-      path: outputPath,
+    const pdfData = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
     });
+    pdfBuffer = Buffer.from(pdfData);
   } finally {
     await browser.close();
   }
 
-  return outputPath;
+  return uploadBlob(pdfBuffer, `pdfs/${assignmentId}.pdf`, 'application/pdf');
 }

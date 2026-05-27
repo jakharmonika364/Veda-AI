@@ -13,6 +13,8 @@ const EnvSchema = z.object({
   LLM_PROVIDER: z.enum(['anthropic', 'openai', 'groq']).default('anthropic'),
   UPLOADS_DIR: z.string().default('./uploads'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  AZURE_STORAGE_CONNECTION_STRING: z.string().min(1, 'AZURE_STORAGE_CONNECTION_STRING is required'),
+  AZURE_STORAGE_CONTAINER: z.string().default('vedaai'),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

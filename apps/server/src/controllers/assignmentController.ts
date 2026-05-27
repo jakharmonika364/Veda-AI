@@ -4,11 +4,10 @@ import { QuestionPaper } from '../models/QuestionPaper';
 import { getQuestionQueue } from '../queues/questionQueue';
 import { getRedis } from '../config/redis';
 import { generatePDF } from '../services/pdfService';
+import { uploadBlob } from '../services/blobService';
 import { createError } from '../middleware/errorHandler';
 import { emitToAssignment } from '../websocket/wsServer';
 import path from 'path';
-import fs from 'fs';
-import { env } from '../config/env';
 import type { WsJobQueuedData } from '@vedaai/shared';
 
 const CACHE_KEY = 'assignments:list';
@@ -23,11 +22,15 @@ export async function createAssignment(
     const { dueDate, questionTypes: questionTypesRaw, additionalInfo, title, pastedText, schoolName } = req.body;
     const file = req.file;
 
-    // FormData sends everything as strings — parse the JSON array
     const questionTypes =
       typeof questionTypesRaw === 'string' ? JSON.parse(questionTypesRaw) : questionTypesRaw;
 
-    const fileUrl = file ? `/uploads/files/${file.filename}` : null;
+    let fileUrl: string | null = null;
+    if (file) {
+      const blobName = `files/${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      fileUrl = await uploadBlob(file.buffer, blobName, file.mimetype);
+    }
+
     const assignmentTitle =
       title ?? (file ? path.basename(file.originalname, path.extname(file.originalname)) : `Assignment ${Date.now()}`);
 
@@ -45,8 +48,6 @@ export async function createAssignment(
     const job = await queue.add('generate', { assignmentId: assignment._id.toString() });
 
     await Assignment.findByIdAndUpdate(assignment._id, { jobId: job.id });
-
-    // Invalidate cache
     await getRedis().del(CACHE_KEY);
 
     const waiting = await queue.getWaiting();
@@ -152,15 +153,17 @@ export async function triggerPdf(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const paper = await QuestionPaper.findOne({ assignmentId: req.params.id });
+    const assignmentId = req.params['id'] as string;
+    const paper = await QuestionPaper.findOne({ assignmentId });
     if (!paper) {
       next(createError('Question paper not found', 404));
       return;
     }
 
-    const assignmentId = req.params['id'] as string;
-    await generatePDF(paper, assignmentId);
-    res.json({ pdfPath: `/uploads/pdfs/${assignmentId}.pdf`, message: 'PDF generated successfully' });
+    const pdfUrl = await generatePDF(paper, assignmentId);
+    await Assignment.findByIdAndUpdate(assignmentId, { pdfUrl });
+
+    res.json({ pdfUrl, message: 'PDF generated successfully' });
   } catch (err) {
     next(err);
   }
@@ -172,12 +175,12 @@ export async function downloadPdf(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const pdfPath = path.join(env.UPLOADS_DIR, 'pdfs', `${req.params.id}.pdf`);
-    if (!fs.existsSync(pdfPath)) {
+    const assignment = await Assignment.findById(req.params['id']).lean();
+    if (!assignment?.pdfUrl) {
       next(createError('PDF not yet generated. Call POST /pdf first.', 404));
       return;
     }
-    res.download(pdfPath, `question-paper-${req.params.id}.pdf`);
+    res.redirect(assignment.pdfUrl);
   } catch (err) {
     next(err);
   }

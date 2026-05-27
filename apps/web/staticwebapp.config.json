@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {
+      "route": "/*",
+      "allowedRoles": ["anonymous"]
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/_next/*", "/favicon.ico"]
+  },
+  "platform": {
+    "apiRuntime": "node:18"
+  },
+  "trailingSlash": "never"
+}
